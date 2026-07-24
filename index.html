@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>장난감 가게의 비밀 - 방탈출 게임</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #1a1a1a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Pretendard', sans-serif;
+      overflow: hidden;
+    }
+
+    /* 게임 컨테이너 (16:9 비율 유지) */
+    .game-container {
+      position: relative;
+      width: 100%;
+      max-width: 1280px;
+      aspect-ratio: 16 / 9;
+      background: url('bright_whimsical_toy_shop_bg.png') no-repeat center center;
+      background-size: cover;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    /* 클릭 가능한 오브젝트 (클릭 영역 표시용) */
+    .interactive-zone {
+      position: absolute;
+      cursor: pointer;
+      border: 2px dashed transparent;
+      transition: all 0.2s ease;
+    }
+
+    /* 개발 시 위치를 확인하고 싶다면 아래 주석을 해제하세요 */
+    /* .interactive-zone { border-color: rgba(255, 255, 0, 0.5); background: rgba(255, 255, 0, 0.1); } */
+
+    .interactive-zone:hover {
+      border-color: #ffd700;
+      background: rgba(255, 215, 0, 0.2);
+      filter: drop-shadow(0 0 10px #ffd700);
+    }
+
+    /* 각 오브젝트 위치 (이미지 좌표에 맞춤) */
+    #cuckoo-clock { top: 15%; left: 42%; width: 7%; height: 18%; }
+    #train-engine { bottom: 3%; left: 48%; width: 15%; height: 20%; }
+    #glass-cabinet { top: 38%; right: 4%; width: 13%; height: 25%; }
+    #exit-door { top: 45%; left: 40%; width: 7%; height: 20%; }
+
+    /* 모달 창 스타일 */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .modal-content {
+      background: #fff8eb;
+      border: 4px solid #8b5a2b;
+      border-radius: 16px;
+      padding: 30px;
+      width: 90%;
+      max-width: 450px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      color: #4a2e16;
+    }
+
+    .modal-content h2 {
+      margin-bottom: 15px;
+      color: #8b5a2b;
+      font-size: 1.5rem;
+    }
+
+    .modal-content p {
+      margin-bottom: 20px;
+      font-size: 1.1rem;
+      line-height: 1.5;
+    }
+
+    .modal-content input {
+      width: 80%;
+      padding: 10px;
+      font-size: 1.2rem;
+      text-align: center;
+      border: 2px solid #8b5a2b;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      outline: none;
+    }
+
+    .modal-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      font-size: 1rem;
+      font-weight: bold;
+      color: white;
+      background: #8b5a2b;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn:hover { background: #6a4320; }
+    .btn-close { background: #888; }
+    .btn-close:hover { background: #666; }
+
+    /* 인벤토리 (얻은 힌트 보관) */
+    .inventory {
+      position: absolute;
+      bottom: 15px;
+      left: 15px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 15px;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.9rem;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+<div class="game-container">
+  <!-- 상호작용 오브젝트들 -->
+  <div id="cuckoo-clock" class="interactive-zone" title="뻐꾸기 시계"></div>
+  <div id="train-engine" class="interactive-zone" title="장난감 기차"></div>
+  <div id="glass-cabinet" class="interactive-zone" title="자물쇠가 걸린 진열장"></div>
+  <div id="exit-door" class="interactive-zone" title="탈출구"></div>
+
+  <!-- 인벤토리 / 상태창 -->
+  <div class="inventory" id="inventory">
+    🔍 획득한 힌트: 없음
+  </div>
+
+  <!-- 공통 모달 -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal-content">
+      <h2 id="modal-title">제목</h2>
+      <p id="modal-text">내용</p>
+      <input type="text" id="modal-input" placeholder="정답 입력..." style="display: none;">
+      <div class="modal-buttons">
+        <button class="btn" id="modal-submit-btn" style="display: none;" onclick="checkAnswer()">확인</button>
+        <button class="btn btn-close" onclick="closeModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 게임 상태 관리
+  const gameState = {
+    clockSolved: false,
+    trainSolved: false,
+    cabinetUnlocked: false,
+    hasKey: false
+  };
+
+  let currentPuzzle = null;
+
+  // DOM 요소를 미리 가져오기
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalText = document.getElementById('modal-text');
+  const modalInput = document.getElementById('modal-input');
+  const modalSubmitBtn = document.getElementById('modal-submit-btn');
+  const inventory = document.getElementById('inventory');
+
+  // 모달 열기 함수
+  function openModal(title, text, hasInput = false, puzzleType = null) {
+    modalTitle.innerText = title;
+    modalText.innerHTML = text;
+    currentPuzzle = puzzleType;
+
+    if (hasInput) {
+      modalInput.style.display = 'block';
+      modalSubmitBtn.style.display = 'inline-block';
+      modalInput.value = '';
+      modalInput.focus();
+    } else {
+      modalInput.style.display = 'none';
+      modalSubmitBtn.style.display = 'none';
+    }
+    modal.style.display = 'flex';
+  }
+
+  // 모달 닫기
+  function closeModal() {
+    modal.style.display = 'none';
+  }
+
+  // 인벤토리 업데이트
+  function updateInventory() {
+    let hints = [];
+    if (gameState.clockSolved) hints.push("시간 [03:00]");
+    if (gameState.trainSolved) hints.push("기차 바퀴 [6]");
+    if (gameState.hasKey) hints.push("🗝️ 황금 열쇠");
+
+    inventory.innerHTML = "🔍 획득한 힌트: " + (hints.length > 0 ? hints.join(" | ") : "없음");
+  }
+
+  // 각 오브젝트 클릭 이벤트
+  document.getElementById('cuckoo-clock').addEventListener('click', () => {
+    if (!gameState.clockSolved) {
+      openModal("뻐꾸기 시계", "시계 바늘이 멈춰있습니다.<br><b>'시계가 가리키는 시간은 몇 시 일까요?'</b><br>(숫자만 입력해주세요)", true, 'clock');
+    } else {
+      openModal("뻐꾸기 시계", "시계는 정확히 <b>3시</b>를 가리키고 있습니다.");
+    }
+  });
+
+  document.getElementById('train-engine').addEventListener('click', () => {
+    if (!gameState.trainSolved) {
+      openModal("장난감 기차", "장난감 기차 기관차 바퀴 아래에 숫자가 적혀있습니다.<br><b>'빨간 기관차의 큰 바퀴 수는 몇 개인가요?'</b>", true, 'train');
+    } else {
+      openModal("장난감 기차", "기차의 바퀴 수는 <b>6개</b>입니다.");
+    }
+  });
+
+  document.getElementById('glass-cabinet').addEventListener('click', () => {
+    if (gameState.hasKey) {
+      openModal("장난감 진열장", "이미 진열장을 열어 열쇠를 획득했습니다.");
+    } else if (!gameState.cabinetUnlocked) {
+      openModal("자물쇠가 달린 진열장", "2자리 암호 자물쇠가 걸려있습니다.<br><b>[ 뻐꾸기 시계의 시간 ] + [ 기차 바퀴 수 ]</b>의 연속된 숫자는?<br>(예: 1시와 2개 -> 0106)", true, 'cabinet');
+    } else {
+      // 자물쇠를 풀었을 때 열쇠 획득 처리
+      gameState.hasKey = true;
+      updateInventory();
+      openModal("진열장 열기 성공!", "진열장이 열렸습니다! 안에 있던 <b>🗝️ 황금 열쇠</b>를 획득했습니다!");
+    }
+  });
+
+  document.getElementById('exit-door').addEventListener('click', () => {
+    if (gameState.hasKey) {
+      openModal("🎉 탈출 성공!", "황금 열쇠로 문을 열었습니다!<br>축하합니다! 장난감 가게에서 무사히 탈출했습니다!");
+    } else {
+      openModal("문", "문이 굳게 잠겨 있습니다. 문을 열려면 <b>황금 열쇠</b>가 필요합니다.");
+    }
+  });
+
+  // 정답 제출 확인
+  function checkAnswer() {
+    const answer = modalInput.value.trim();
+
+    if (currentPuzzle === 'clock') {
+      if (answer === '3' || answer === '03') {
+        gameState.clockSolved = true;
+        updateInventory();
+        openModal("정답!", "뻐꾸기 시계가 울리며 <b>3시</b>임을 알려줍니다!");
+      } else {
+        alert("틀렸습니다. 시계 판을 다시 잘 살펴보세요!");
+      }
+    } else if (currentPuzzle === 'train') {
+      if (answer === '6' || answer === '06') {
+        gameState.trainSolved = true;
+        updateInventory();
+        openModal("정답!", "기차 아래에서 숫자 <b>6</b>을 발견했습니다!");
+      } else {
+        alert("틀렸습니다. 빨간 기관차 쪽을 잘 보세요!");
+      }
+    } else if (currentPuzzle === 'cabinet') {
+      if (answer === '0306' || answer === '36') {
+        gameState.cabinetUnlocked = true;
+        gameState.hasKey = true;
+        updateInventory();
+        openModal("자물쇠 해제!", "철칵! 자물쇠가 풀렸습니다.<br>진열장 안에서 <b>🗝️ 문 열쇠</b>를 획득했습니다!");
+      } else {
+        alert("암호가 틀렸습니다. 시계의 시간과 기차 바퀴 수를 결합해 보세요!");
+      }
+    }
+  }
+
+  // Enter키 입력 지원
+  modalInput.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') checkAnswer();
+  });
+</script>
+
+</body>
+</html>
